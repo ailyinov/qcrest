@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+  redis-server:
+    image: 'redis'
+
+  postgres:
+    image: 'postgres'
+    ports:
+    - 5433:5432
+    volumes:
+      - ./dbinit:/docker-entrypoint-initdb.d
+    environment:
+      POSTGRES_DB: "qctest"
+      POSTGRES_PASSWORD: "pass"
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+
+  go-app:
+    build: .
+    ports:
+      - "5000:8090"
