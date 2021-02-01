@@ -14,13 +14,13 @@ import (
 
 type Product struct {
 	ProductId int64 `json:"product_id"`
-	Quantity int64
+	Quantity  int64
 }
 
 type App struct {
-	pgbd *pg.DB
-	rdb *redis.Client
-	rateLimit int64
+	pgbd         *pg.DB
+	rdb          *redis.Client
+	rateLimit    int64
 	rateLimitKey string
 }
 
@@ -64,6 +64,11 @@ func (a App) storeOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if res.RowsAffected() == 0 {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
 	fmt.Fprintf(w, "%+v", res.RowsAffected())
 }
 
@@ -84,7 +89,7 @@ func (a App) storeGetProduct(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%+v", p)
 }
 
-func (a App)  rateLimitMiddleware(next http.Handler) http.Handler {
+func (a App) rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		currRate, rdbErr := a.rdb.Incr(ctx, a.rateLimitKey).Result()
@@ -147,8 +152,8 @@ func main() {
 
 func ProvidePostgresConnect() *pg.DB {
 	pgdb := pg.Connect(&pg.Options{
-		Addr: "postgres:5432",
-		User: "postgres",
+		Addr:     "postgres:5432",
+		User:     "postgres",
 		Password: "pass",
 		Database: "qctest",
 	})
