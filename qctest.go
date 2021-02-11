@@ -7,82 +7,66 @@ import (
 	"github.com/go-pg/pg/v10"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
+	"github.com/qctest/repo/model"
+	"github.com/qctest/repo/repository"
 	"log"
 	"net/http"
 	"os"
 )
 
-type Product struct {
-	ProductId int64 `json:"product_id"`
-	Quantity  int64
-}
-
 type App struct {
-	pgbd         *pg.DB
 	rdb          *redis.Client
+	pr           *repository.ProductRepository
 	rateLimit    int64
 	rateLimitKey string
 }
 
 func (a App) storeAdd(w http.ResponseWriter, r *http.Request) {
-	p := new(Product)
+	p := new(model.Product)
 	err := json.NewDecoder(r.Body).Decode(p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	res, pgErr := a.pgbd.Model(p).
-		OnConflict("(product_id) DO UPDATE").
-		Set("quantity = product.Quantity + ?", p.Quantity).
-		Returning("quantity").
-		Insert()
+	res, pgErr := a.pr.Store(p)
 
 	if pgErr != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Printf("%+v", pgErr.Error())
 		return
 	}
 
-	fmt.Fprintf(w, "%+v", res.RowsAffected())
+	fmt.Fprintf(w, "%+v", res)
 }
 
 func (a App) storeOrder(w http.ResponseWriter, r *http.Request) {
-	p := new(Product)
+	p := new(model.Product)
 	err := json.NewDecoder(r.Body).Decode(p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	res, pgErr := a.pgbd.Model(p).
-		Set("quantity = product.Quantity - ?", p.Quantity).
-		Where("product_id = ? AND quantity >= ?", p.ProductId, p.Quantity).
-		Update()
+	res, pgErr := a.pr.Order(p)
 
 	if pgErr != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Printf("%+v", pgErr.Error())
 		return
 	}
 
-	if res.RowsAffected() == 0 {
+	if res == 0 {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
-	fmt.Fprintf(w, "%+v", res.RowsAffected())
+	fmt.Fprintf(w, "%+v", res)
 }
 
 func (a App) storeGetProduct(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	productId := params["product_id"]
-	p := new(Product)
-	pgErr := a.pgbd.Model(p).
-		Where("product_id = ?", productId).
-		Select()
+	p, err := a.pr.FindById(productId)
 
-	if pgErr != nil {
+	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		log.Printf("%+v", pgErr.Error())
 		return
 	}
 
@@ -115,6 +99,13 @@ func (a App) rateLimitMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (a App) responseHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+		w.Header().Set("Content-Type", "application/json")
+	})
+}
+
 func main() {
 	r := mux.NewRouter()
 
@@ -125,7 +116,7 @@ func main() {
 	defer rdb.Close()
 
 	app := new(App)
-	app.pgbd = pgdb
+	app.pr = repository.NewProductRepository(pgdb)
 	app.rdb = rdb
 	app.rateLimit = 3
 	app.rateLimitKey = "rlk"
@@ -138,6 +129,8 @@ func main() {
 
 	r.HandleFunc("/store/add", app.storeAdd).Methods("POST")
 	r.HandleFunc("/store/{product_id:[0-9]+}", app.storeGetProduct).Methods("GET")
+
+	r.Use(app.responseHeadersMiddleware)
 
 	port := os.Getenv("PORT")
 	if port == "" {
