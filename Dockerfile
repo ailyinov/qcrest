@@ -4,10 +4,10 @@ WORKDIR /app
 
 COPY go.sum ./
 COPY go.mod ./
-COPY qctest.go ./
+COPY /src ./
 
 ENV PATH=$PATH:${GOPATH}/bin
 
-RUN go generate && go build -o app .
+RUN go build -o app /app/main
 
 CMD ["/app/app"]

@@ -5,14 +5,16 @@ services:
     image: 'redis'
 
   postgres:
+    env_file:
+      - .env
     image: 'postgres'
     ports:
-    - 5433:5432
+    - 5433:${PG_PORT}
     volumes:
       - ./dbinit:/docker-entrypoint-initdb.d
     environment:
-      POSTGRES_DB: "qctest"
-      POSTGRES_PASSWORD: "pass"
+      POSTGRES_DB: "${PG_DB}"
+      POSTGRES_PASSWORD: "${PG_PASSWORD}"
       POSTGRES_HOST_AUTH_METHOD: "trust"
 
   adminer:
@@ -23,5 +25,7 @@ services:
 
   go-app:
     build: .
+    env_file:
+      - .env
     ports:
-      - "5000:8090"
+      - "${EXPOSE_PORT}:${CONTAINER_PORT}"
